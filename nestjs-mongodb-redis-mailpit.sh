@@ -11,19 +11,19 @@ printf "Project name: "
 read -r projectName
 
 # Install and configure Nx
-yarn global add nx
-npx create-nx-workspace "$projectName" \
+#npm i --global nx@16
+npx create-nx-workspace@17 "$projectName" \
   --interactive=false \
   --workspaceType=integrated \
   --preset=apps \
   --skipGit=true \
-  --pm=yarn \
+  --pm=npm \
   --nxCloud=false
 
 cd "$projectName" || exit 1
 
 # Install NestJS
-yarn add -D @nx/nest
+npm i --save-dev @nx/nest
 npx nx g @nx/nest:app backend \
   --unitTestRunner jest \
   --directory apps/backend \
@@ -32,7 +32,7 @@ npx nx g @nx/nest:app backend \
   --e2eTestRunner none
 
 # Install Prisma
-yarn add -D @nx-tools/nx-prisma
+npm i --save-dev @nx-tools/nx-prisma
 
 npx nx g @nx/nest:lib db \
   --unitTestRunner=none \
@@ -75,13 +75,18 @@ version: '3'
 services:
   mongo:
     image: mongo
+    command: --replSet rs0
     ports:
       - '${FORWARD_DB_PORT:-27017}:27017'
     environment:
-      MONGO_INITDB_ROOT_USERNAME: \${DB_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: \${DB_PASSWORD}
+      # MONGO_INITDB_ROOT_USERNAME: root
+      # MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_USER: \${DB_USERNAME}
+      MONGO_INITDB_PWD: \${DB_PASSWORD}
+      MONGO_INITDB_DATABASE: \${DB_DATABASE}
     volumes:
       - 'nest-mongo:/data/db'
+      - './docker/:/docker-entrypoint-initdb.d/'
     networks:
       - nest
   redis:
@@ -116,6 +121,25 @@ volumes:
   nest-redis:
     driver: local
 
+EOF
+
+mkdir -p docker
+
+cat << EOF > docker/init.sh
+set -e
+
+mongosh <<EOF2
+use \$MONGO_INITDB_DATABASE
+rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27017'}]});
+db.createUser({
+  user: '\$MONGO_INITDB_USER',
+  pwd: '\$MONGO_INITDB_PWD',
+  roles: [{
+    role: 'readWrite',
+    db: '\$MONGO_INITDB_DATABASE'
+  }]
+})
+EOF2
 EOF
 
 cat << EOF > .env
@@ -154,9 +178,9 @@ jobs:
       - uses: actions/setup-node@v3
         with:
           node-version: 18
-          cache: 'yarn'
+          cache: 'npm'
       - name: Install dependencies 📦
-        run: yarn install
+        run: npm ci
       - name: Link check 🗒️
         run: npx nx run-many -t lint
       - name: Running tests 🧪
@@ -167,9 +191,9 @@ EOF
 
 cat << EOF > README.md
 ## Prerequisites
-Install the yarn dependencies
+Install the npm dependencies
 \`\`\`
-yarn install
+npm install
 \`\`\`
 
 ## Development
